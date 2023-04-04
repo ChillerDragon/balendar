@@ -90,8 +90,9 @@ get_events_in_days() {
 }
 
 print_event_boilerplate() {
-	# usage: print_event_boilerplate <event_slug>
+	# usage: print_event_boilerplate <event_slug> <title>
 	# ex event_slug: steves_birthday
+	# ex title: Steven's birthday
 	local event_slug="$1"
 	cat <<- EOF
 	---
@@ -100,7 +101,7 @@ print_event_boilerplate() {
 	state: pending
 	---
 
-	# $event_slug
+	# $title
 
 	event details here
 	EOF
@@ -116,10 +117,11 @@ get_year_from_day() {
 }
 
 create_event_boilerplate() {
-	# usage: create_event_boilerplate <profile> <day> <event_slug>
+	# usage: create_event_boilerplate <profile> <day> <event_slug> <title>
 	# ex profile: default
 	# ex day: 2023-04-04
 	# ex event_slug: steves_birthday
+	# ex title: Steven's birthday
 	# output: event_file_path
 	local profile="$1"
 	local day="$2"
@@ -128,8 +130,10 @@ create_event_boilerplate() {
 	event_file="$(build_event_file_path "$profile" "$event_slug" "$day")"
 	[[ -f "$event_file" ]] && return
 
-	mkdir -p "$day_dir"
-	print_event_boilerplate "$event_slug" > "$event_file"
+	local day_dir
+	day_dir="${event_file%/*}"
+	mkdir -p "$day_dir" || exit 1
+	print_event_boilerplate "$event_slug" "$title" > "$event_file"
 	echo "$event_file"
 }
 
@@ -187,6 +191,30 @@ build_event_file_path() {
 	echo "$event_file"
 }
 
+title_to_event_slug() {
+	# usage: title_to_event_slug <title>
+	# ex title: Title (with spaces & other fancy letters)
+	# output: title__with_spaces___other_fance_letters
+	local title="$1"
+	# TODO: use more pure bash here
+	echo "$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z_]/_/g'
+}
+
+get_title_interactive() {
+	# usage: get_title_interactive
+	# needs a interactive session
+	# is asking for user input
+	# output: title
+	# stderr: user prompts
+	local title
+	while [[ "$title" == "" ]]
+	do
+		printf "event title: " 1>&2
+		read -r title
+	done
+	echo "$title"
+}
+
 create_event_interactive() {
 	# usage: create_event_interactive <profile>
 	# ex profile: default
@@ -196,13 +224,28 @@ create_event_interactive() {
 	local profile=default # TODO: pick
 	local event_slug
 	local boilerplate_file
+	local title
 
 	while true
 	do
 		day="$(pick_new_day_interactive)"
-		event_slug="$(get_event_slug_interactive)"
+		# event_slug="$(get_event_slug_interactive)"
+		while true
+		do
+			title="$(get_title_interactive)"
+			event_slug="$(title_to_event_slug "$title")"
+			event_file="$(build_event_file_path "$profile" "$event_slug" "$day")"
+			if [ -f "$event_file" ]
+			then
+				printf \
+					"\nError: event already exists '%s'\n" \
+					"$event_file" \
+					1>&2
+			else
+				break
+			fi
+		done
 
-		event_file="$(build_event_file_path "$profile" "$event_slug" "$day")"
 		if [ -f "$event_file" ]
 		then
 			echo "Error: event already exists '$event_file'"
@@ -211,7 +254,7 @@ create_event_interactive() {
 		fi
 	done
 
-	boilerplate_file="$(create_event_boilerplate "$profile" "$day" "$event_slug")"
+	boilerplate_file="$(create_event_boilerplate "$profile" "$day" "$event_slug" "$title")"
 	edit_file "$boilerplate_file"
 }
 
